@@ -44,21 +44,14 @@
       margin-bottom: 20px;
     }
 
-    input[type="url"] {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      font-size: 16px;
-    }
-
+    input[type="url"],
     select {
       width: 100%;
       padding: 10px;
       border: 1px solid #ccc;
       border-radius: 5px;
       font-size: 16px;
-      margin-top: 10px;
+      margin-bottom: 10px;
     }
 
     button {
@@ -106,6 +99,16 @@
           <option value="mp4">MP4</option>
           <option value="mp3">MP3</option>
           <option value="webm">WEBM</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="quality">Choose Video Quality:</label>
+        <select name="quality" required>
+          <option value="" disabled selected>Choose quality</option>
+          <option value="best">Best Quality</option>
+          <option value="bestvideo[height<=720]+bestaudio/best">720p</option>
+          <option value="bestvideo[height<=480]+bestaudio/best">480p</option>
+          <option value="bestvideo[height<=360]+bestaudio/best">360p</option>
         </select>
       </div>
       <button type="submit">Download Video</button>

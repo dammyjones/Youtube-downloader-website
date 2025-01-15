@@ -1,45 +1,49 @@
-from flask import Flask, request, send_file, render_template
-import os
+from flask import Flask, request, jsonify, render_template
 from yt_dlp import YoutubeDL
+import logging
 
 app = Flask(__name__)
 
+# Define the root route
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html')  # Ensure 'index.html' exists in the 'templates' folder
 
-@app.route('/download', methods=['POST'])
-def download_video():
-    video_url = request.form['video_url']
-    format = request.form['format']
-    quality = request.form['quality']
+# Enable debug-level logging
+logging.basicConfig(level=logging.DEBUG)
+
+@app.route('/get_video_info', methods=['POST'])
+@app.route('/get_video_info', methods=['POST'])
+def get_video_info():
+    video_url = request.json.get('video_url', None)
+    if not video_url:
+        return jsonify({'error': 'No video URL provided'}), 400
+
+    logging.debug(f"Received video URL: {video_url}")
     try:
-        # Configure yt-dlp
+        # Ensure ydl_opts is properly defined before usage
         ydl_opts = {
-        'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'format': f"{quality}[ext=mp4]/bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best",
-        'n_threads': 4,
-        'quiet': True,
-        'force_generic_extractor': True,
-        'format': 'video+bestaudio/best'
+            'quiet': True,
+            'extractor_args': {
+                'youtube': {
+                    'client': 'web'  # Adjust client if necessary
+                }
+            }
+        }
 
-}
-
-
-        # Create the 'downloads' directory if it doesn't exist
-        os.makedirs('downloads', exist_ok=True)
-
-        # Download the video
         with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(video_url, download=True)
-            video_title = info_dict.get('title', None)
-            filename = ydl.prepare_filename(info_dict)
+            info_dict = ydl.extract_info(video_url, download=False)
+            formats = info_dict.get('formats', [])
+            if not formats:
+                raise ValueError("No formats found")
 
-        # Serve the file for download
-        return send_file(filename, as_attachment=True)
+        logging.debug(f"Available formats: {formats}")
+        return jsonify({'formats': formats})
 
     except Exception as e:
-        return f"An error occurred: {e}"
+        # Log the exact error for debugging
+        logging.error(f"Error fetching video info: {e}")
+        return jsonify({'error': f"Failed to fetch formats: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

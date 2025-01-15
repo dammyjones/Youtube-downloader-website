@@ -44,7 +44,15 @@
       margin-bottom: 20px;
     }
 
-    input[type="url"],
+    input[type="url"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
     select {
       width: 100%;
       padding: 10px;
@@ -84,31 +92,25 @@
     .footer a:hover {
       text-decoration: underline;
     }
+
+    /* Error Message Styles */
+    .error-message {
+      color: red;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>YouTube Downloader</h1>
-    <form action="{{ url_for('download_video') }}" method="POST">
+    <form id="downloadForm" action="/download" method="POST">
       <div class="form-group">
-        <input type="url" name="video_url" placeholder="Enter YouTube Video URL" required>
+        <input type="url" name="video_url" id="video_url" placeholder="Enter YouTube Video URL" required>
       </div>
       <div class="form-group">
-        <select name="format" required>
-          <option value="" disabled selected>Choose format</option>
-          <option value="mp4">MP4</option>
-          <option value="mp3">MP3</option>
-          <option value="webm">WEBM</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="quality">Choose Video Quality:</label>
-        <select name="quality" required>
-          <option value="" disabled selected>Choose quality</option>
-          <option value="best">Best Quality</option>
-          <option value="bestvideo[height<=720]+bestaudio/best">720p</option>
-          <option value="bestvideo[height<=480]+bestaudio/best">480p</option>
-          <option value="bestvideo[height<=360]+bestaudio/best">360p</option>
+        <select name="format_id" id="format_id" required>
+          <option value="" disabled selected>Choose video quality</option>
         </select>
       </div>
       <button type="submit">Download Video</button>
@@ -117,5 +119,44 @@
       <p>For personal use only. Learn more about <a href="https://www.youtube.com/t/terms" target="_blank">YouTube's Terms</a>.</p>
     </div>
   </div>
+  <script>
+   const videoUrlInput = document.getElementById('video_url');
+const formatSelect = document.getElementById('format_id');
+
+videoUrlInput.addEventListener('input', async () => {
+  const videoUrl = videoUrlInput.value.trim();
+  if (!videoUrl) return;
+
+  try {
+    const response = await fetch('/get_video_info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_url: videoUrl }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch video info: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    // Populate the format dropdown
+    formatSelect.innerHTML = '<option value="" disabled selected>Choose video quality</option>';
+    data.formats.forEach(format => {
+      const option = document.createElement('option');
+      option.value = format.format_id;
+      option.textContent = `${format.resolution || 'Audio Only'} (${format.ext}) ${format.filesize ? ` - ${Math.round(format.filesize / 1024 / 1024)} MB` : ''}`;
+      formatSelect.appendChild(option);
+    });
+
+  } catch (error) {
+    console.error(error);
+    formatSelect.innerHTML = '<option value="" disabled selected>Error fetching formats</option>';
+  }
+});
+  </script>
 </body>
 </html>

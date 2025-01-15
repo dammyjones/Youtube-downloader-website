@@ -12,15 +12,18 @@ def index():
 def download_video():
     video_url = request.form['video_url']
     format = request.form['format']
+    quality = request.form['quality']
     try:
         # Configure yt-dlp
         ydl_opts = {
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4' if format == 'mp4' else 'bestaudio/best',
-            'n_threads': 4,  # Number of parallel threads for fragment downloads
-            'quiet': True,   # Suppress verbose output
-            'merge_output_format': format if format == 'mp4' else None
-        }
+        'outtmpl': 'downloads/%(title)s.%(ext)s',
+        'format': 'video[height>=1080]+bestaudio/best[ext=mp4]',  
+        'quiet': True,
+        'force_generic_extractor': True,
+        
+
+}
+
 
         # Create the 'downloads' directory if it doesn't exist
         os.makedirs('downloads', exist_ok=True)
@@ -30,8 +33,6 @@ def download_video():
             info_dict = ydl.extract_info(video_url, download=True)
             video_title = info_dict.get('title', None)
             filename = ydl.prepare_filename(info_dict)
-            if format == 'mp3':
-                filename = filename.replace('.mp4', '.mp3')  # Convert extension to .mp3
 
         # Serve the file for download
         return send_file(filename, as_attachment=True)

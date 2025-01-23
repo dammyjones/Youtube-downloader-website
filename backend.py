@@ -14,36 +14,18 @@ logging.basicConfig(level=logging.DEBUG)
 
 @app.route('/get_video_info', methods=['POST'])
 @app.route('/get_video_info', methods=['POST'])
-def get_video_info():
-    video_url = request.json.get('video_url', None)
-    if not video_url:
-        return jsonify({'error': 'No video URL provided'}), 400
-
-    logging.debug(f"Received video URL: {video_url}")
+def get_video_formats():
     try:
-        # Ensure ydl_opts is properly defined before usage
-        ydl_opts = {
-            'quiet': True,
-            'extractor_args': {
-                'youtube': {
-                    'client': 'web'  # Adjust client if necessary
-                }
-            }
-        }
-
         with YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(video_url, download=False)
             formats = info_dict.get('formats', [])
             if not formats:
-                raise ValueError("No formats found")
-
-        logging.debug(f"Available formats: {formats}")
-        return jsonify({'formats': formats})
-
+                return jsonify({'error': 'No downloadable formats available.'}), 404
     except Exception as e:
-        # Log the exact error for debugging
-        logging.error(f"Error fetching video info: {e}")
-        return jsonify({'error': f"Failed to fetch formats: {str(e)}"}), 500
+        if "Failed to extract any player response" in str(e):
+            return jsonify({'error': 'YouTube extractor failed. Please ensure yt-dlp is updated.'}), 500
+        logging.exception("Unexpected error")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

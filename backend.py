@@ -2,18 +2,34 @@ from flask import Flask, request, jsonify, render_template, send_file
 from yt_dlp import YoutubeDL
 import logging
 import os
+from functools import lru_cache
 
 app = Flask(__name__)
-
-# Enable debug-level logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Define yt-dlp options (without format specification)
+# Modified yt-dlp configuration with MP4 preferences
 ydl_opts = {
     'noplaylist': True,
     'quiet': True,
     'outtmpl': 'downloads/%(title)s.%(ext)s',
+    'concurrent_fragment_downloads': 16,
+    'http_chunk_size': 10485760,
+    'external_downloader': 'aria2c',
+    'external_downloader_args': [
+        '-x', '16',
+        '-s', '16',
+        '-k', '10M'
+    ],
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
+    # Add postprocessor to prefer MP4 format
 }
+
+@lru_cache(maxsize=100)
+def get_cached_info(url):
+    with YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(url, download=False)
 
 @app.route('/')
 def index():
@@ -22,71 +38,67 @@ def index():
 @app.route('/get_video_info', methods=['POST'])
 def get_video_formats():
     try:
-        data = request.get_json()
-        video_url = data.get('video_url')
+        video_url = request.json.get('video_url')
         if not video_url:
-            return jsonify({'error': 'No video URL provided.'}), 400
+            return jsonify({'error': 'No URL provided'}), 400
 
-        with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(video_url, download=False)
-            formats = info_dict.get('formats', [])
+        info_dict = get_cached_info(video_url)
+        formats = info_dict.get('formats', [])
 
         return jsonify({
             'formats': [
                 {
                     'format_id': fmt.get('format_id'),
-                    'resolution': f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') and fmt.get('height') else 'Audio Only',
+                    'resolution': f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') else 'Audio',
                     'ext': fmt.get('ext'),
                     'filesize': fmt.get('filesize'),
                     'acodec': fmt.get('acodec'),
-                    'vcodec': fmt.get('vcodec'),
-                    'url': fmt.get('url')
-                } for fmt in formats if fmt.get('format_id') and fmt.get('url')
+                    'vcodec': fmt.get('vcodec')
+                } for fmt in formats if fmt.get('url')
             ]
         })
 
     except Exception as e:
-        logging.exception("Unexpected error")
+        logging.error(f"Error getting formats: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/download', methods=['POST'])
 def download_video():
     try:
-        video_url = request.form.get('video_url')
-        format_id = request.form.get('format_id')
-        if not video_url or not format_id:
-            return jsonify({'error': 'Video URL and format ID are required.'}), 400
-
-        # Create a copy of the base options to avoid thread-safety issues
+        video_url = request.form['video_url']
+        format_id = request.form['format_id']
+        
+        # Clone options to avoid thread conflicts
         download_opts = ydl_opts.copy()
-
-        # First, extract info to check if the selected format is video-only
+        
         with YoutubeDL(download_opts) as ydl:
-            info_dict = ydl.extract_info(video_url, download=False)
+            info = ydl.extract_info(video_url, download=False)
+            
+            # Find the selected format
             selected_format = next(
-                (fmt for fmt in info_dict['formats'] if fmt['format_id'] == format_id),
+                (f for f in info['formats'] if f['format_id'] == format_id),
                 None
             )
+            
             if not selected_format:
-                return jsonify({'error': 'Invalid format ID.'}), 400
+                return jsonify({'error': 'Invalid format selected'}), 400
 
-            # Check if the format is video-only (has no audio codec)
+            # Handle formats without audio
             if selected_format.get('acodec') == 'none':
-                # Combine the selected video format with the best audio
-                download_opts['format'] = f'{format_id}+bestaudio'
+                # Prefer AAC audio for better MP4 compatibility
+                download_opts['format'] = f'{format_id}+bestaudio[ext=m4a]/bestaudio'
+                download_opts['merge_output_format'] = 'mp4'
             else:
-                # Use the selected format as-is (already includes audio)
                 download_opts['format'] = format_id
 
-        # Perform the download with the adjusted options
-        with YoutubeDL(download_opts) as ydl:
-            info_dict = ydl.extract_info(video_url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
+            # Actual download
+            ydl.download([video_url])
+            filename = ydl.prepare_filename(info)
 
-        return send_file(file_path, as_attachment=True)
+        return send_file(filename, as_attachment=True)
 
     except Exception as e:
-        logging.exception("Download error")
+        logging.error(f"Download failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
